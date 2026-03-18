@@ -380,3 +380,59 @@ class apply():
                 unset(path, key)
             else:
                 set(path, key, value)
+
+
+
+
+
+def check():
+    """Perform strict configuration validation by ensuring all keys are valid."""
+    try:
+        from .config_schema import VALID_KEYS
+    except ImportError:
+        log.warning("config_schema.py not found; strict configuration validation is disabled.")
+        return
+
+    def _validate(conf_dict, current_path=""):
+        success = True
+        for k, v in conf_dict.items():
+            full_path = current_path + str(k)
+
+            if isinstance(k, str):
+                # Whitelist dynamic paths
+                if ">" in k:
+                    pass
+                elif full_path.startswith("postprocessor.") and len(current_path) == 14:
+                    pass
+                elif ".directory." in full_path or full_path.endswith(".directory"):
+                    pass
+                elif ".postprocessors." in full_path:
+                    pass
+                elif full_path.startswith("extractor.mastodon."):
+                    pass
+                elif full_path.startswith("extractor.foolslide."):
+                    pass
+                elif full_path.startswith("extractor.foolfuuka."):
+                    pass
+                elif full_path.startswith("extractor.gelbooru_v01."):
+                    pass
+                elif full_path.startswith("extractor.gelbooru_v02."):
+                    pass
+                elif full_path.startswith("extractor.urlshortener."):
+                    pass
+                elif ".cookies." in full_path:
+                    pass
+                elif full_path.startswith("extractor.keywords."):
+                    pass
+                elif k not in VALID_KEYS:
+                    log.error("Unknown configuration key '%s' at '%s'", k, full_path)
+                    success = False
+
+            if isinstance(v, dict):
+                if not _validate(v, full_path + "."):
+                    success = False
+
+        return success
+
+    if not _validate(_config):
+        raise SystemExit(2)
