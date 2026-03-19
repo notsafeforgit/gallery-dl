@@ -84,7 +84,9 @@ def main():
             config.set(*opts)
 
         if args.config_strict:
-            config.check()
+            config._config_strict = True
+            import atexit
+            atexit.register(config.check_strict)
 
         output.configure_standard_streams()
 
