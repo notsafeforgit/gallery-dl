@@ -232,5 +232,36 @@ class TestConfigFiles(unittest.TestCase):
             raise unittest.SkipTest(f"{path} not available")
 
 
+    def test_strict_validation(self):
+        config._config.clear()
+
+        # Valid config keys
+        config.set(("extractor", "reddit"), "archive", True)
+        config.set(("downloader",), "retries", 3)
+
+        # check_strict() runs gracefully on valid configurations
+        try:
+            config.check_strict()
+        except SystemExit:
+            self.fail("check_strict() raised SystemExit unexpectedly on a valid config")
+
+        # Invalid config keys (typos)
+        config.set(("extractor", "reddit"), "archve", True)
+
+        with self.assertRaises(SystemExit) as cm:
+            config.check_strict()
+        self.assertEqual(cm.exception.code, 2)
+
+        config.unset(("extractor", "reddit"), "archve")
+
+        # Test full dict dynamic accesses pass safely
+        config.set(("extractor", "mastodon", "tabletop.social"), "root", "123")
+        try:
+            config.check_strict()
+        except SystemExit:
+            self.fail("check_strict() raised SystemExit unexpectedly after a dynamic root access")
+
+        config._config.clear()
+
 if __name__ == "__main__":
     unittest.main()

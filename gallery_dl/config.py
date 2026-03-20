@@ -24,60 +24,10 @@ _files = []
 _type = "json"
 _load = util.json_loads
 _default_configs = ()
-_accessed = {}
-_config_strict = False
-_accessed = {}
 
 
 # --------------------------------------------------------------------
 # public interface
-
-def _record_access(path, key=None):
-    if not _config_strict:
-        return
-    d = _accessed
-
-    # Traverse config dictionary to see if the value we are accessing is a dictionary
-    try:
-        conf = _config
-        for p in path:
-            conf = conf[p]
-        if key is not None:
-            conf = conf[key]
-
-        is_dict = isinstance(conf, dict)
-    except KeyError:
-        is_dict = False
-
-    for p in path:
-        d = d.setdefault(p, {})
-
-    if key is not None:
-        if is_dict:
-            # The value is a dictionary. Mark its subtree as fully accessed via a special key `None`
-            sub = d.setdefault(key, {})
-            sub[None] = None
-        else:
-            d[key] = None
-    else:
-        if is_dict:
-            d[None] = None
-
-_config_strict = False
-
-def _record_access(path, key=None):
-    if not _config_strict:
-        return
-    d = _accessed
-    for p in path:
-        d = d.setdefault(p, {})
-    if key is not None:
-        d[key] = None
-    elif not d:
-        # mark entire dict as accessed
-        d[None] = None
-
-
 
 
 def default(type=None):
@@ -304,7 +254,6 @@ def clear():
 
 def get(path, key, default=None, conf=_config):
     """Get the value of property 'key' or a default value"""
-    _record_access(path, key)
     try:
         for p in path:
             conf = conf[p]
@@ -315,14 +264,10 @@ def get(path, key, default=None, conf=_config):
 
 def interpolate(path, key, default=None, conf=_config):
     """Interpolate the value of 'key'"""
-    _record_access((), key)
     if key in conf:
         return conf[key]
     try:
-        current_path = []
         for p in path:
-            current_path.append(p)
-            _record_access(current_path, key)
             conf = conf[p]
             if key in conf:
                 default = conf[key]
@@ -335,16 +280,12 @@ def interpolate_common(common, paths, key, default=None, conf=_config):
     """Interpolate the value of 'key'
     using multiple 'paths' along a 'common' ancestor
     """
-    _record_access((), key)
     if key in conf:
         return conf[key]
 
     # follow the common path
     try:
-        current_path = []
         for p in common:
-            current_path.append(p)
-            _record_access(current_path, key)
             conf = conf[p]
             if key in conf:
                 default = conf[key]
@@ -356,10 +297,7 @@ def interpolate_common(common, paths, key, default=None, conf=_config):
     for path in paths:
         c = conf
         try:
-            current_path = list(common)
             for p in path:
-                current_path.append(p)
-                _record_access(current_path, key)
                 c = c[p]
                 if key in c:
                     value = c[key]
@@ -372,7 +310,6 @@ def interpolate_common(common, paths, key, default=None, conf=_config):
 
 def accumulate(path, key, conf=_config):
     """Accumulate the values of 'key' along 'path'"""
-    _record_access((), key)
     result = []
     try:
         if key in conf:
@@ -381,10 +318,7 @@ def accumulate(path, key, conf=_config):
                     result.extend(value)
                 else:
                     result.append(value)
-        current_path = []
         for p in path:
-            current_path.append(p)
-            _record_access(current_path, key)
             conf = conf[p]
             if key in conf:
                 if value := conf[key]:
@@ -447,27 +381,23 @@ class apply():
             else:
                 set(path, key, value)
 
-
-
-
-
-
-
-def check():
-    """Perform strict configuration validation by ensuring all keys are valid."""
+def check_strict():
+    """Validate that the loaded configuration contains no unmatched/unaccessed keys."""
     try:
         from .config_schema import VALID_KEYS
     except ImportError:
         log.warning("config_schema.py not found; strict configuration validation is disabled.")
-        return
+        return 0
 
-    def _validate(conf_dict, current_path=""):
-        success = True
+    errors = 0
+
+    def _check(conf_dict, current_path=""):
+        nonlocal errors
         for k, v in conf_dict.items():
             full_path = current_path + str(k)
 
             if isinstance(k, str):
-                # Whitelist structural or highly dynamic paths
+                # structural or highly dynamic paths bypass the strict check
                 if ">" in k:
                     pass
                 elif full_path.startswith("postprocessor.") and len(current_path) == 14:
@@ -482,65 +412,18 @@ def check():
                     pass
                 elif full_path.startswith("extractor.keywords."):
                     pass
-                # Many extractors group configurations under dynamic sub-keys (e.g. mastodon domains, tags, instances)
-                # If the key is not in VALID_KEYS, check if it's an instance dictionary
                 elif k not in VALID_KEYS:
+                    # check if it is a valid instance declaration
                     if isinstance(v, dict) and ("root" in v or "api_root" in v or "access-token" in v):
                         pass
                     else:
                         log.error("Unknown configuration key '%s' at '%s'", k, full_path)
-                        success = False
+                        errors += 1
 
             if isinstance(v, dict):
-                if not _validate(v, full_path + "."):
-                    success = False
+                _check(v, full_path + ".")
 
-        return success
-
-    if not _validate(_config):
-        raise SystemExit(2)
-
-
-
-def check_strict():
-    """Validate that the configuration contains no unmatched/unaccessed keys in the branches visited."""
-    if not _config_strict:
-        return 0
-
-    errors = 0
-    import logging
-    log = logging.getLogger("config")
-
-    def _check(conf_dict, accessed_dict, current_path=""):
-        nonlocal errors
-        if accessed_dict is None or None in accessed_dict:
-            return
-
-        for k, v in conf_dict.items():
-            full_path = current_path + str(k)
-
-            if k not in accessed_dict:
-                # If it's a top-level category ("extractor", "downloader", "output", "postprocessor", "cache", "subconfigs")
-                # and it's missing from accessed_dict, it just means it wasn't run.
-                # If it's a module name (e.g. "reddit", "youtube") under "extractor",
-                # and it's missing from accessed_dict, it also means it wasn't run.
-                # Anything else that is missing from accessed_dict is a typo!
-                is_unexercised_module = False
-                if current_path == "" and k in ("extractor", "downloader", "output", "postprocessor", "cache", "subconfigs"):
-                    is_unexercised_module = True
-                elif current_path == "extractor.":
-                    is_unexercised_module = True
-                elif current_path == "downloader.":
-                    is_unexercised_module = True
-
-                if not is_unexercised_module:
-                    log.error("Unknown configuration key '%s' at '%s'", k, full_path)
-                    errors += 1
-            else:
-                if isinstance(v, dict) and isinstance(accessed_dict[k], dict):
-                    _check(v, accessed_dict[k], full_path + ".")
-
-    _check(_config, _accessed)
+    _check(_config)
     if errors > 0:
         raise SystemExit(2)
     return 0

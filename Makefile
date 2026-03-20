@@ -6,7 +6,7 @@ SHAREDIR ?= $(PREFIX)/share
 PYTHON ?= /usr/bin/env python3
 
 
-all: man completion supportedsites options config_schema
+all: man completion supportedsites options
 
 clean:
 	$(RM) -r build/
@@ -32,7 +32,7 @@ supportedsites: docs/supportedsites.md
 
 options: docs/options.md
 
-.PHONY: all clean install release test executable completion man supportedsites options config_schema
+.PHONY: all clean install release test executable completion man supportedsites options
 
 docs/supportedsites.md: gallery_dl/*/*.py scripts/supportedsites.py
 	$(PYTHON) scripts/supportedsites.py
@@ -54,8 +54,3 @@ data/completion/_gallery-dl: gallery_dl/option.py scripts/completion_zsh.py
 
 data/completion/gallery-dl.fish: gallery_dl/option.py scripts/completion_fish.py
 	$(PYTHON) scripts/completion_fish.py
-
-config_schema: gallery_dl/config_schema.py
-
-gallery_dl/config_schema.py: scripts/generate_config_schema.py
-	$(PYTHON) scripts/generate_config_schema.py
