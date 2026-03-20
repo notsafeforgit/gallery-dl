@@ -380,3 +380,50 @@ class apply():
                 unset(path, key)
             else:
                 set(path, key, value)
+
+def check_strict():
+    """Validate that the loaded configuration contains no unmatched/unaccessed keys."""
+    try:
+        from .config_schema import VALID_KEYS
+    except ImportError:
+        log.warning("config_schema.py not found; strict configuration validation is disabled.")
+        return 0
+
+    errors = 0
+
+    def _check(conf_dict, current_path=""):
+        nonlocal errors
+        for k, v in conf_dict.items():
+            full_path = current_path + str(k)
+
+            if isinstance(k, str):
+                # structural or highly dynamic paths bypass the strict check
+                if ">" in k:
+                    pass
+                elif full_path.startswith("postprocessor.") and len(current_path) == 14:
+                    pass
+                elif ".directory." in full_path or full_path.endswith(".directory"):
+                    pass
+                elif ".postprocessors." in full_path:
+                    pass
+                elif ".cookies." in full_path:
+                    pass
+                elif ".path-restrict." in full_path:
+                    pass
+                elif full_path.startswith("extractor.keywords."):
+                    pass
+                elif k not in VALID_KEYS:
+                    # check if it is a valid instance declaration
+                    if isinstance(v, dict) and ("root" in v or "api_root" in v or "access-token" in v):
+                        pass
+                    else:
+                        log.error("Unknown configuration key '%s' at '%s'", k, full_path)
+                        errors += 1
+
+            if isinstance(v, dict):
+                _check(v, full_path + ".")
+
+    _check(_config)
+    if errors > 0:
+        raise SystemExit(2)
+    return 0

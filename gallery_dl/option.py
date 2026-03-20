@@ -635,6 +635,12 @@ def build_parser():
               "(json, yaml, toml)"),
     )
     configuration.add_argument(
+        "--config-strict",
+        dest="config_strict", action="store_true",
+        help="Error on unknown configuration keys",
+    )
+
+    configuration.add_argument(
         "--config-ignore",
         dest="config_load", action="store_false",
         help="Do not load default configuration files",

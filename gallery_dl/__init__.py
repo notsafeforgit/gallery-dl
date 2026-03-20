@@ -83,7 +83,11 @@ def main():
         for opts in args.options:
             config.set(*opts)
 
+        if args.config_strict:
+            config.check_strict()
+
         output.configure_standard_streams()
+
 
         # signals
         if signals := config.get((), "signals-ignore"):
